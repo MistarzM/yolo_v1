@@ -1,2 +1,6 @@
+# python bytecode
+__pycache__/
+
 # dataset
+data*
 archive*

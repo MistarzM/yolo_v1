@@ -42,7 +42,7 @@ class YoloV1(nn.Module):
         self.architecture = architecture_config
         self.in_channels = in_channels
         self.darknet = self._create_conv_layers(self.architecture)
-        self.fully_connected_layers = self._create_fcs(**kwargs)
+        self.fully_connected_layers = self._create_fully_connected_layers(**kwargs)
 
     def forward(self, x):
         x = self.darknet(x)
@@ -97,7 +97,7 @@ class YoloV1(nn.Module):
 
         return nn.Sequential(*layers)
 
-    def _create_fcs(self, split_size, num_boxes, num_classes):
+    def _create_fully_connected_layers(self, split_size, num_boxes, num_classes):
         return nn.Sequential(
             nn.Flatten(),
             nn.Linear(1024 * split_size ** 2, 480), # orginal yolo v1 (4096)
@@ -106,9 +106,9 @@ class YoloV1(nn.Module):
             nn.Linear(480, split_size ** 2 * (num_classes + num_boxes * 5)) # num_classes + num_boxes * 5 = 30
         )
 
-def test(split_size=7, num_boxes=2, num_classes=20):
-    model = YoloV1(split_size=split_size, num_boxes=num_boxes, num_classes=num_classes)
-    x = torch.randn((2, 3, 448, 448))
-    print(model(x).shape)
-
-test()
+# def test(split_size=7, num_boxes=2, num_classes=20):
+#     model = YoloV1(split_size=split_size, num_boxes=num_boxes, num_classes=num_classes)
+#     x = torch.randn((2, 3, 448, 448))
+#     print(model(x).shape)
+#
+# test()
