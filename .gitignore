@@ -1,6 +1,16 @@
 # python bytecode
 __pycache__/
 
+# virtual evnironments
+.venv/
+venv/
+
+# build
+build/
+
+# OS files
+.DS_Store
+
 # dataset
 data*
 archive*
