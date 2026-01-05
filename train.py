@@ -28,7 +28,7 @@ from loss import YoloLoss
 
 torch.autograd.set_detect_anomaly(True)
 
-seed = 123
+seed = 25
 torch.manual_seed(seed)
 
 
@@ -42,7 +42,8 @@ EPOCHS = 100
 NUM_WORKERS = 2
 PIN_MEMORY = True
 LOAD_MODEL = False
-LOAD_MODEL_FILE = "overfit.pth.tar"
+LOAD_MODEL_8_EXAMPLES_FILE = "overfit_8_examples.pth.tar"
+LOAD_MODEL_100_EXAMPLES_FILE = "overfit_100_examples.pth.tar"
 IMG_DIR = "data/images"
 LABEL_DIR = "data/labels"
 
@@ -91,17 +92,17 @@ def main():
 
 
     if LOAD_MODEL:
-        load_checkpoint(torch.load(LOAD_MODEL_FILE), model, optimizer)
+        load_checkpoint(torch.load(LOAD_MODEL_100_EXAMPLES_FILE), model, optimizer)
 
     train_dataset = VOCDataset(
-        "data/8examples.csv",
+        csv_file="data/100examples.csv",
         transform=transform,
         img_dir=IMG_DIR,
         label_dir=LABEL_DIR
     )
 
     test_dataset = VOCDataset(
-        "data/100examples.csv",
+        csv_file="data/test.csv",
         transform=transform,
         img_dir=IMG_DIR,
         label_dir=LABEL_DIR
@@ -154,14 +155,14 @@ def main():
             pred_boxes, target_boxes, iou_threshold=0.5, box_format="midpoint"
         )
 
-        print(f"Train mAP: {mean_avg_prec}")
+        print(f"Epoch: {epoch} Train mAP: {mean_avg_prec}")
 
         if mean_avg_prec > 0.9:
             checkpoint = {
                 "state_dict": model.state_dict(),
                 "optimizer": optimizer.state_dict(),
             }
-            save_checkpoint(checkpoint, filename=LOAD_MODEL_FILE)
+            save_checkpoint(checkpoint, filename=LOAD_MODEL_100_EXAMPLES_FILE)
             import time
             print("saved tiem for sleep")
             time.sleep(120)
