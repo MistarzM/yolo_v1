@@ -6,17 +6,31 @@ from collections import Counter
 
 def intersection_over_union(boxes_preds, boxes_labels, box_format="midpoint"):
     """
-    Calculates intersection over union
+    Calculates intersection over union (IoU)
 
     Parameters:
         boxes_preds (tensor): Predictions of Bounding Boxes (BATCH_SIZE, 4)
         boxes_labels (tensor): Correct labels of Bounding Boxes (BATCH_SIZE, 4)
         box_format (str): midpoint/corners, if boxes (x,y,w,h) or (x1,y1,x2,y2)
 
+    Concept:
+    The "Accuracy" of the box Overlap
+        0.0 = no overlap
+        1.0 = perfect match
+
+    Math:
+                 Area of Overlap
+    IoU = -------------------------------
+          Area of Union (A + B - Overlap)
+
     Returns:
         tensor: Intersection over union for all examples
     """
 
+    # CASE 1: Midpoint Format (x, y, w, h)
+    # The neural netowrk outputs this format
+    # We must convert to corners (x1, y1, x2, y2) to calculate 
+    # the intersection rectangle
     if box_format == "midpoint":
         box1_x1 = boxes_preds[..., 0:1] - boxes_preds[..., 2:3] / 2
         box1_y1 = boxes_preds[..., 1:2] - boxes_preds[..., 3:4] / 2
@@ -27,7 +41,9 @@ def intersection_over_union(boxes_preds, boxes_labels, box_format="midpoint"):
         box2_x2 = boxes_labels[..., 0:1] + boxes_labels[..., 2:3] / 2
         box2_y2 = boxes_labels[..., 1:2] + boxes_labels[..., 3:4] / 2
 
-    if box_format == "corners":
+    # CASE 2: Corner Format (x1, y1, x2, y2)
+    # sometimes datasets come in this format
+    elif box_format == "corners":
         box1_x1 = boxes_preds[..., 0:1]
         box1_y1 = boxes_preds[..., 1:2]
         box1_x2 = boxes_preds[..., 2:3]
@@ -37,17 +53,28 @@ def intersection_over_union(boxes_preds, boxes_labels, box_format="midpoint"):
         box2_x2 = boxes_labels[..., 2:3]
         box2_y2 = boxes_labels[..., 3:4]
 
+    # CASE 3: ERROR HANDLING 
+    else:
+        raise ValueError(f"Invalid box_format: {box_format}. Use 'midpoint' or 'corners'.")
+
+    # --- GEOMETRY OF INTERSECTION ---
+    # The Top-Left of the intersection is the MAX of the two Top-Lefts
     x1 = torch.max(box1_x1, box2_x1)
     y1 = torch.max(box1_y1, box2_y1)
+
+    # The Bottop-Right of the intersection is the MIN of the two Botton-Rights
     x2 = torch.min(box1_x2, box2_x2)
     y2 = torch.min(box1_y2, box2_y2)
 
-    # .clamp(0) is for the case when they do not intersect
+    # CRITICAL: .clamp(0) is for the case when they do not intersect
+    # If boxes do not overlap, (x2 - x1) will be negative
+    # area cannot be negative, so we clamp it to 0
     intersection = (x2 - x1).clamp(0) * (y2 - y1).clamp(0)
 
     box1_area = abs((box1_x2 - box1_x1) * (box1_y2 - box1_y1))
     box2_area = abs((box2_x2 - box2_x1) * (box2_y2 - box2_y1))
 
+    # Add epsilon to prevent division by zero
     return intersection / (box1_area + box2_area - intersection + 1e-6)
 
 
@@ -96,7 +123,7 @@ def mean_average_precision(
     pred_boxes, true_boxes, iou_threshold=0.5, box_format="midpoint", num_classes=20
 ):
     """
-    Calculates mean average precision 
+    Calculates mean Average Precision (mAP) 
 
     Parameters:
         pred_boxes (list): list of lists containing all bboxes with each bboxes
@@ -105,6 +132,15 @@ def mean_average_precision(
         iou_threshold (float): threshold where predicted bboxes is correct
         box_format (str): "midpoint" or "corners" used to specify bboxes
         num_classes (int): number of classes
+
+    Concept:
+        Accuracy isn't enough (because background is 90% of img)
+        We calculate the Are Under the Curve(AUC) of the Precision-Recall graph
+
+    Math:
+        Precision = TP / (TP + FP)
+        Recall    = TP / (TP + FN)
+        mAP       = Integral(Precision(r) dr)
 
     Returns:
         float: mAP value across all classes given a specific IoU threshold 
@@ -131,17 +167,9 @@ def mean_average_precision(
             if true_box[1] == c:
                 ground_truths.append(true_box)
 
-        # find the amount of bboxes for each training example
-        # Counter here finds how many ground truth bboxes we get
-        # for each training example, so let's say img 0 has 3,
-        # img 1 has 5 then we will obtain a dictionary with:
-        # amount_bboxes = {0:3, 1:5}
-        amount_bboxes = Counter([gt[0] for gt in ground_truths])
-
-        # We then go through each key, val in this dictionary
-        # and convert to the following (w.r.t same example):
-        # ammount_bboxes = {0:torch.tensor[0,0,0], 1:torch.tensor[0,0,0,0,0]}
-        for key, val in amount_bboxes.items():
+        train_idx_counts = Counter([gt[0] for gt in ground_truths])
+        amount_bboxes = {}
+        for key, val in train_idx_counts.items():
             amount_bboxes[key] = torch.zeros(val)
 
         # sort by box probabilities which is index 2
@@ -164,6 +192,9 @@ def mean_average_precision(
             num_gts = len(ground_truth_img)
             best_iou = 0
 
+            best_gt_idx = -1
+
+            # Find the best matching ground truth box
             for idx, gt in enumerate(ground_truth_img):
                 iou = intersection_over_union(
                     torch.tensor(detection[3:]),
@@ -188,13 +219,17 @@ def mean_average_precision(
             else:
                 FP[detection_idx] = 1
 
+        # calculate cumulative sums for the PR-Curve
         TP_cumsum = torch.cumsum(TP, dim=0)
         FP_cumsum = torch.cumsum(FP, dim=0)
         recalls = TP_cumsum / (total_true_bboxes + epsilon)
         precisions = torch.divide(TP_cumsum, (TP_cumsum + FP_cumsum + epsilon))
+
+        # add start points (precision 1, recall 0) for integration
         precisions = torch.cat((torch.tensor([1]), precisions))
         recalls = torch.cat((torch.tensor([0]), recalls))
-        # torch.trapz for numerical integration
+
+        # torch.trapz for numerical integration (area under curve)
         average_precisions.append(torch.trapz(precisions, recalls))
 
     return sum(average_precisions) / len(average_precisions)
@@ -217,6 +252,8 @@ def plot_image(image, boxes):
     for box in boxes:
         box = box[2:]
         assert len(box) == 4, "Got more values than in x, y, w, h, in a box!"
+
+        # geometry: convert center (x,y) to top-left (x,y) for matplotlib
         upper_left_x = box[0] - box[2] / 2
         upper_left_y = box[1] - box[3] / 2
         rect = patches.Rectangle(
@@ -256,10 +293,13 @@ def get_bboxes(
             predictions = model(x)
 
         batch_size = x.shape[0]
+
+        # convert raw model output (grid cells) to clean lists of boxes
         true_bboxes = cellboxes_to_boxes(labels)
         bboxes = cellboxes_to_boxes(predictions)
 
         for idx in range(batch_size):
+            # apply NMS to remove duplicates
             nms_boxes = non_max_suppression(
                 bboxes[idx],
                 iou_threshold=iou_threshold,
@@ -291,35 +331,39 @@ def convert_cellboxes(predictions, S=7):
     """
     Converts bounding boxes output from Yolo with
     an image split size of S into entire image ratios
-    rather than relative to cell ratios. Tried to do this
-    vectorized, but this resulted in quite difficult to read
-    code... Use as a black box? Or implement a more intuitive,
-    using 2 for loops iterating range(S) and convert them one
-    by one, resulting in a slower but more readable implementation.
+    rather than relative to cell ratios. 
     """
 
     predictions = predictions.to("cpu")
     batch_size = predictions.shape[0]
     predictions = predictions.reshape(batch_size, 7, 7, 30)
+
     bboxes1 = predictions[..., 21:25]
     bboxes2 = predictions[..., 26:30]
+
+    # pick the best box based on confidence scores
     scores = torch.cat(
         (predictions[..., 20].unsqueeze(0), predictions[..., 25].unsqueeze(0)), dim=0
     )
     best_box = scores.argmax(0).unsqueeze(-1)
     best_boxes = bboxes1 * (1 - best_box) + best_box * bboxes2
+
+    # create grid indices: [[0, 1, 2...], [0, 1, 2...]]
     cell_indices = torch.arange(7).repeat(batch_size, 7, 1).unsqueeze(-1)
+
+    """
+         cell_relative_coord + cell_index 
+        ----------------------------------
+                      splits
+    """
     x = 1 / S * (best_boxes[..., :1] + cell_indices)
     y = 1 / S * (best_boxes[..., 1:2] + cell_indices.permute(0, 2, 1, 3))
     w_y = 1 / S * best_boxes[..., 2:4]
+
     converted_bboxes = torch.cat((x, y, w_y), dim=-1)
     predicted_class = predictions[..., :20].argmax(-1).unsqueeze(-1)
-    best_confidence = torch.max(predictions[..., 20], predictions[..., 25]).unsqueeze(
-        -1
-    )
-    converted_preds = torch.cat(
-        (predicted_class, best_confidence, converted_bboxes), dim=-1
-    )
+    best_confidence = torch.max(predictions[..., 20], predictions[..., 25]).unsqueeze(-1)
+    converted_preds = torch.cat((predicted_class, best_confidence, converted_bboxes), dim=-1)
 
     return converted_preds
 
