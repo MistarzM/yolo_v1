@@ -26,7 +26,7 @@ from utils import (
 )
 from loss import YoloLoss
 
-torch.autograd.set_detect_anomaly(True)
+# torch.autograd.set_detect_anomaly(True)
 
 seed = 25
 torch.manual_seed(seed)
@@ -38,9 +38,9 @@ DEVICE = "mps" if torch.mps.is_available() else "cuda" if torch.cuda.is_availabl
 #DEVICE = "cpu"
 BATCH_SIZE = 16 
 WEIGHT_DECAY = 0
-EPOCHS = 100
+EPOCHS = 2048
 NUM_WORKERS = 2
-PIN_MEMORY = True
+PIN_MEMORY = True if DEVICE == "cuda" else False
 LOAD_MODEL = False
 LOAD_MODEL_8_EXAMPLES_FILE = "overfit_8_examples.pth.tar"
 LOAD_MODEL_100_EXAMPLES_FILE = "overfit_100_examples.pth.tar"
@@ -117,13 +117,13 @@ def main():
         drop_last=True,
     )
 
-    train_loader = DataLoader(
+    test_loader = DataLoader(
         dataset=test_dataset,
         batch_size=BATCH_SIZE,
         num_workers=NUM_WORKERS,
         pin_memory=PIN_MEMORY,
         shuffle=True,
-        drop_last=False,
+        drop_last=True,
     )
 
     for epoch in range(EPOCHS):
@@ -164,7 +164,7 @@ def main():
             }
             save_checkpoint(checkpoint, filename=LOAD_MODEL_100_EXAMPLES_FILE)
             import time
-            print("saved tiem for sleep")
+            print("saved - time for sleep")
             time.sleep(120)
 
         train_fn(train_loader, model, optimizer, loss_fn)

@@ -14,3 +14,7 @@ build/
 # dataset
 data*
 archive*
+
+# models
+*.pth.tar
+*model*
