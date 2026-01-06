@@ -232,6 +232,9 @@ def mean_average_precision(
         # torch.trapz for numerical integration (area under curve)
         average_precisions.append(torch.trapz(precisions, recalls))
 
+    if len(average_precisions) == 0:
+        return 0.0
+
     return sum(average_precisions) / len(average_precisions)
 
 

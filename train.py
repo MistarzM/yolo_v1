@@ -38,12 +38,15 @@ EPOCHS = 2048
 NUM_WORKERS = 2
 
 PIN_MEMORY = True if DEVICE == "cuda" else False
-LOAD_MODEL = False
+
+LOAD_MODEL = True
+DISPLAY = True 
 
 LOAD_MODEL_8_EXAMPLES_FILE = "overfit_8_examples.pth.tar"
 LOAD_MODEL_100_EXAMPLES_FILE = "overfit_100_examples.pth.tar"
 IMG_DIR = "data/images"
 LABEL_DIR = "data/labels"
+
 
 class Compose(object):
     """
@@ -100,9 +103,10 @@ def train_fn(train_loader, model, optimizer, loss_fn):
         optimizer.step()
 
         # Update the progress bar 
-        loop.set_postfix(loss = loss.item())
+        loop.set_postfix(loss=loss.item())
 
-    print(f"Mean loss = {sum(mean_loss)/len(mean_loss)}")
+    if len(mean_loss) != 0:
+        print(f"Mean loss = {sum(mean_loss)/len(mean_loss)}")
 
 def main():
     model = YoloV1(
@@ -158,19 +162,23 @@ def main():
     # 2. EPOCH LOOP
     for epoch in range(EPOCHS):
 
-        for x, y in train_loader:
-            x = x.to(DEVICE)
-            for idx in range(8):
-                bboxes = cellboxes_to_boxes(model(x))
-                bboxes = non_max_suppression(
-                    bboxes[idx], 
-                    iou_threshold=0.5, 
-                    threshold=0.4,
-                    box_format="midpoint"
-                )
-                plot_image(x[idx].permute(1,2,0).to("cpu"), bboxes)
-            import sys
-            sys.exit()
+        # Train the model on data
+        train_fn(train_loader, model, optimizer, loss_fn)
+
+        if DISPLAY:
+            for x, y in train_loader:
+                x = x.to(DEVICE)
+                for idx in range(8):
+                    bboxes = cellboxes_to_boxes(model(x))
+                    bboxes = non_max_suppression(
+                        bboxes[idx], 
+                        iou_threshold=0.5, 
+                        threshold=0.4,
+                        box_format="midpoint"
+                    )
+                    plot_image(x[idx].permute(1,2,0).to("cpu"), bboxes)
+                import sys
+                sys.exit()
 
         # Evalutate Performance
         # Note: For the Sanity Check, we evaluate on the TRAINING set
@@ -201,8 +209,6 @@ def main():
             print("saved - time for sleep")
             time.sleep(120)
 
-        # Train the model on data
-        train_fn(train_loader, model, optimizer, loss_fn)
 
 if __name__ == "__main__":
     main()
