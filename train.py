@@ -33,17 +33,18 @@ LEARNING_RATE = 2e-5
 DEVICE = "mps" if torch.mps.is_available() else "cuda" if torch.cuda.is_available() else "cpu"
 
 BATCH_SIZE = 16 
-WEIGHT_DECAY = 0
+WEIGHT_DECAY = 1e-5
 EPOCHS = 2048
 NUM_WORKERS = 2
 
 PIN_MEMORY = True if DEVICE == "cuda" else False
 
-LOAD_MODEL = False 
+LOAD_MODEL = False
 DISPLAY = False
 
 LOAD_MODEL_8_EXAMPLES_FILE = "overfit_8_examples.pth.tar"
 LOAD_MODEL_100_EXAMPLES_FILE = "overfit_100_examples.pth.tar"
+LOAD_MODEL_FULL = "model_full.tar"
 IMG_DIR = "data/images"
 LABEL_DIR = "data/labels"
 
@@ -123,12 +124,12 @@ def main():
 
 
     if LOAD_MODEL:
-        load_checkpoint(torch.load(LOAD_MODEL_100_EXAMPLES_FILE), model, optimizer)
+        load_checkpoint(torch.load(LOAD_MODEL_FULL), model, optimizer)
 
     # 1. LOAD DATA
     # We use the small example for the Sanity Check (Overfitting)
     train_dataset = VOCDataset(
-        csv_file="data/100examples.csv",
+        csv_file="data/train.csv",
         transform=transform,
         img_dir=IMG_DIR,
         label_dir=LABEL_DIR
@@ -181,7 +182,7 @@ def main():
                 sys.exit()
 
         # Evalutate Performance
-        if epoch % 10 == 0:
+        if epoch % 16 == 0:
             pred_boxes, target_boxes = get_bboxes(
                 test_loader, 
                 model, 
@@ -201,7 +202,7 @@ def main():
                     "state_dict": model.state_dict(),
                     "optimizer": optimizer.state_dict(),
                 }
-                save_checkpoint(checkpoint, filename=LOAD_MODEL_100_EXAMPLES_FILE)
+                save_checkpoint(checkpoint, filename=LOAD_MODEL_FULL)
                 import time
                 print("- model saved -")
                 time.sleep(1)
