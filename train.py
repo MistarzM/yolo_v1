@@ -39,8 +39,8 @@ NUM_WORKERS = 2
 
 PIN_MEMORY = True if DEVICE == "cuda" else False
 
-LOAD_MODEL = True
-DISPLAY = True 
+LOAD_MODEL = False 
+DISPLAY = False
 
 LOAD_MODEL_8_EXAMPLES_FILE = "overfit_8_examples.pth.tar"
 LOAD_MODEL_100_EXAMPLES_FILE = "overfit_100_examples.pth.tar"
@@ -166,7 +166,7 @@ def main():
         train_fn(train_loader, model, optimizer, loss_fn)
 
         if DISPLAY:
-            for x, y in train_loader:
+            for x, _ in train_loader:
                 x = x.to(DEVICE)
                 for idx in range(8):
                     bboxes = cellboxes_to_boxes(model(x))
@@ -181,33 +181,30 @@ def main():
                 sys.exit()
 
         # Evalutate Performance
-        # Note: For the Sanity Check, we evaluate on the TRAINING set
-        # We want to see if the model has memorized the answers.
-        # !!! In real training, we should evalutae on test_loader !!!
-        pred_boxes, target_boxes = get_bboxes(
-            train_loader, 
-            model, 
-            iou_threshold=0.5, 
-            threshold=0.4,
-            device=DEVICE
-        )
+        if epoch % 10 == 0:
+            pred_boxes, target_boxes = get_bboxes(
+                test_loader, 
+                model, 
+                iou_threshold=0.5, 
+                threshold=0.4,
+                device=DEVICE
+            )
 
-        mean_avg_prec = mean_average_precision(
-            pred_boxes, target_boxes, iou_threshold=0.5, box_format="midpoint"
-        )
+            mean_avg_prec = mean_average_precision(
+                pred_boxes, target_boxes, iou_threshold=0.5, box_format="midpoint"
+            )
 
-        print(f"Epoch: {epoch} Train mAP: {mean_avg_prec}")
+            print(f"Epoch: {epoch} Train mAP: {mean_avg_prec}")
 
-        # Saving model if (mAP > 0.9)
-        if mean_avg_prec > 0.9:
-            checkpoint = {
-                "state_dict": model.state_dict(),
-                "optimizer": optimizer.state_dict(),
-            }
-            save_checkpoint(checkpoint, filename=LOAD_MODEL_100_EXAMPLES_FILE)
-            import time
-            print("saved - time for sleep")
-            time.sleep(120)
+            if mean_avg_prec > 0.95:
+                checkpoint = {
+                    "state_dict": model.state_dict(),
+                    "optimizer": optimizer.state_dict(),
+                }
+                save_checkpoint(checkpoint, filename=LOAD_MODEL_100_EXAMPLES_FILE)
+                import time
+                print("- model saved -")
+                time.sleep(1)
 
 
 if __name__ == "__main__":
